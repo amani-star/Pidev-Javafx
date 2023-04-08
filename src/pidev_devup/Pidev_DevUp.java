@@ -32,13 +32,15 @@ public class Pidev_DevUp {
         User u = new User(5,"foulen", "foulen@example.com", "testtest", "benfoulen", "Doe", 1234567890, dateNaissance);
         User u1 = new User("jia", "eyaaa@gmail.com", "testest", "araari", "eya", 21548685, dateNaissance);
         //sp.ajouter(u1);
-        //sp.supprimer(u);
-        sp.authentification("eyaaa@gmail.com", "testest");
+        //sp.supprimer(u1);
+        //sp.authentification("marwa", "Marwatest1");
+        //sp.login("marwa", "Marwatest1");
+        sp.login("jia", "testest");
         //sp.modifier(u);
         //System.out.println(sp.afficheUser(49));
         //System.out.println(sp.afficherTrie());
         System.out.println(sp.afficher());
-        sp.checkPass("testtest");
+        //sp.checkPass("testtest");
         //sp.banUser(51);
     }
 

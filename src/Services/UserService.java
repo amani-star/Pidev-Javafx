@@ -6,6 +6,7 @@
 package Services;
 
 import Entities.User;
+import Utils.BcryptHasher;
 import Utils.MyDB;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -19,6 +20,8 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.mindrot.jbcrypt.BCrypt;
 
 /**
@@ -28,11 +31,13 @@ import org.mindrot.jbcrypt.BCrypt;
 public class UserService implements IService<User> {
 
     Connection cnx;
+    BcryptHasher hasher;
     //String password="testtest";
     //private String hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt(13));
 
     public UserService() {
         cnx = MyDB.getInstance().getCnx();
+        hasher = new BcryptHasher();
     }
 
     //afficher tout les users
@@ -102,61 +107,23 @@ public class UserService implements IService<User> {
         // La chaîne est valide si elle passe toutes les vérifications
         return true;
     }
-
-    //encodage du mot de passe en sha-256
-    public static String HashagePassword(String password) {
-        /*try {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        byte[] hashInBytes = md.digest(password.getBytes(StandardCharsets.UTF_8));
-
-        StringBuilder sb = new StringBuilder();
-        for (byte b : hashInBytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    } catch (NoSuchAlgorithmException e) {
-        // handle exception
-    }
-    return null;*/
-    /*    String hashedPassword = null;
-        try {
-            String salt = BCrypt.gensalt(13);
-            hashedPassword = BCrypt.hashpw(password, salt);
-        } catch (IllegalArgumentException e) {
-            System.err.println("Error hashing password: " + e.getMessage());
-        }*/
-        String hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt(13));
-        return hashedPassword;
-    }
     
-    public void checkPass(String password){
-         
-        System.out.println(HashagePassword(password));
-        if (BCrypt.checkpw(password, HashagePassword(password))){
-            System.out.println("matches");
-        }else{
-            System.out.println("doesn't matches");
-        }
-    }
-
     //ajouter our sign up d'un user
     @Override
     public void ajouter(User t) {
         try {
-            String req = "INSERT INTO  `user`(`id`, `username`, `email`, `roles`,`password`, `nom`, `prenom`,`num_Tel`, `date_naissance`, `is_banned`) VALUES (?,?,?,?,?,?,?,?,?,?)";
+            String req = "INSERT INTO `user`(`username`, `email`, `roles`, `password`, `nom`, `prenom`, `num_Tel`, `date_naissance`, `is_banned`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             if (estChaineValide(t.getNom()) && estChaineValide(t.getPrenom())) {
-
                 PreparedStatement ps = cnx.prepareStatement(req);
-                ps.setInt(1, t.getId());
-                ps.setString(2, t.getUsername());
-                ps.setString(3, t.getEmail());
-                ps.setString(4, "[\"ROLE_GAMER\"]");
-                ps.setString(5, HashagePassword(t.getPassword()));
-                ps.setString(6, t.getNom());
-                ps.setString(7, t.getPrenom());
-                ps.setInt(8, t.getNum_tel());
-                ps.setDate(9, new java.sql.Date(t.getDate_naissance().getTime()));
-                ps.setBoolean(10, false);
+                ps.setString(1, t.getUsername());
+                ps.setString(2, t.getEmail());
+                ps.setString(3, "[\"ROLE_GAMER\"]");
+                ps.setString(4, hasher.hash(t.getPassword()));
+                ps.setString(5, t.getNom());
+                ps.setString(6, t.getPrenom());
+                ps.setInt(7, t.getNum_tel());
+                ps.setDate(8, new java.sql.Date(t.getDate_naissance().getTime()));
+                ps.setBoolean(9, false);
                 ps.executeUpdate();
                 System.out.println("Utilisateur inséré");
             } else {
@@ -168,46 +135,68 @@ public class UserService implements IService<User> {
     }
 
     //authentification d'un user
-    public User authentification(String email, String password) {
-        User p = null;
-        try {
-            String req = "Select * from  `user` where email ='" + email + "' AND password ='" + HashagePassword(password) + "'";
-            Statement st = cnx.createStatement();
-            ResultSet RS = st.executeQuery(req);
-            RS.next();
-            p.setId(RS.getInt("id"));
-            p.setUsername(RS.getString("username"));
-            p.setEmail(RS.getString("email"));
-            p.setRoles(RS.getString("roles"));
-            p.setPassword(RS.getString("password"));
-            p.setNom(RS.getString("nom"));
-            p.setPrenom(RS.getString("prenom"));
-            p.setNum_tel(RS.getInt("num_tel"));
-            p.setDate_naissance(RS.getDate("date_naissance"));
-            System.out.println("successful login!");
-        } catch (SQLException ex) {
-            System.out.println(ex.getMessage());
+    public boolean login(String username, String password) {
+    try {
+        String req = "SELECT * FROM `user` WHERE `username` = ?";
+        PreparedStatement ps = cnx.prepareStatement(req);
+        ps.setString(1, username);
+        ResultSet rs = ps.executeQuery();
+        if (rs.next()) {
+            String hashedPassword = rs.getString("password");
+            if (hasher.checkPassword(hashedPassword, password)) {
+                User loggedUser = new User(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("email"),
+                        rs.getString("roles"),
+                        hashedPassword,
+                        rs.getString("nom"),
+                        rs.getString("prenom"),
+                        rs.getInt("num_Tel"),
+                        rs.getDate("date_naissance")
+                );
+                System.out.println("Successful login!");
+                return true;
+            } else {
+                System.out.println("Incorrect password.");
+                return false;
+            }
+        } else {
+            System.out.println("User not found.");
+            return false;
         }
-        return p;
+    } catch (SQLException ex) {
+        Logger.getLogger(UserService.class.getName()).log(Level.SEVERE, null, ex);
+        return false;
+    } catch (Exception ex) {
+        Logger.getLogger(UserService.class.getName()).log(Level.SEVERE, null, ex);
+        return false;
     }
+}
+
+    
+    /*public void logout() {
+        loggedUser = null; // assuming `loggedUser` is a class variable that holds the currently logged in user
+        System.out.println("Logged out successfully!");
+    }*/
 
     //modifier des donner d'un utilisateur
     @Override
     public void modifier(User t) {
         try {
-            String req = "UPDATE `user` SET `username`=?,`email`=?,`roles`=?,`password`=?,`nom`=?,`prenom`=?,`num_Tel`=?,`date_naissance`=? WHERE `user`.`id` = ?";
+            String req = "UPDATE `user` SET `username` = ?, `email` = ?, `roles` = ?, `password` = ?, `nom` = ?, `prenom` = ?, `num_Tel` = ?, `date_naissance` = ? WHERE `id` = ?";
             PreparedStatement ps = cnx.prepareStatement(req);
             ps.setString(1, t.getUsername());
             ps.setString(2, t.getEmail());
-            ps.setString(3, "gamer");
-            ps.setString(4, HashagePassword(t.getPassword()));
+            ps.setString(3, "[\"ROLE_GAMER\"]");
+            ps.setString(4, hasher.hash(t.getPassword()));
             ps.setString(5, t.getNom());
             ps.setString(6, t.getPrenom());
             ps.setInt(7, t.getNum_tel());
             ps.setDate(8, new java.sql.Date(t.getDate_naissance().getTime()));
             ps.setInt(9, t.getId());
             ps.executeUpdate();
-            System.out.println("Utilisateur mis a jour");
+            System.out.println("Utilisateur mis à jour");
         } catch (SQLException ex) {
             System.out.println(ex.getMessage());
         }
@@ -218,7 +207,7 @@ public class UserService implements IService<User> {
 
             String req = "UPDATE `user` SET `password`=?,`nom`=?,`prenom`=?,`num_Tel`=?,`date_naissance`=? WHERE `user`.`id` = ?";
             PreparedStatement ps = cnx.prepareStatement(req);
-            ps.setString(1, HashagePassword(t.getPassword()));
+            ps.setString(1, hasher.hash(t.getPassword()));
             ps.setString(2, t.getNom());
             ps.setString(3, t.getPrenom());
             ps.setInt(4, t.getNum_tel());
